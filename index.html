@@ -4,51 +4,47 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>DJ Stage Cam Pro</title>
-  <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
     body { background: #000; color: #fff; font-family: -apple-system, BlinkMacSystemFont, sans-serif; overflow: hidden; height: 100vh; }
     
-    /* Meniu selectare */
     #setupView {
       display: flex; flex-direction: column; align-items: center; justify-content: center;
-      height: 100vh; padding: 20px; text-align: center; gap: 15px;
+      height: 100vh; padding: 20px; text-align: center; gap: 14px;
     }
     .role-btn {
-      width: 100%; max-width: 320px; padding: 18px; border-radius: 12px; border: none;
+      width: 100%; max-width: 320px; padding: 16px; border-radius: 12px; border: none;
       font-size: 16px; font-weight: bold; cursor: pointer; color: #fff;
     }
-    .btn-cam { background: #2563eb; }
     .btn-dj { background: #059669; }
+    .btn-cam { background: #2563eb; }
     input {
       padding: 14px; width: 100%; max-width: 320px; border-radius: 8px; border: 1px solid #333;
       background: #111; color: #fff; text-align: center; font-size: 16px;
     }
 
-    /* Vizualizare Video */
     #streamView { display: none; position: relative; width: 100vw; height: 100vh; background: #000; }
     video { width: 100%; height: 100%; object-fit: contain; }
     
-    /* Controale suprapuse */
     .overlay-controls {
       position: absolute; bottom: 25px; left: 0; right: 0;
-      display: flex; justify-content: center; align-items: center; gap: 18px; z-index: 10;
+      display: flex; justify-content: center; align-items: center; gap: 20px; z-index: 10;
     }
     .control-btn {
-      width: 58px; height: 58px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.4);
+      width: 56px; height: 56px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.4);
       background: rgba(0,0,0,0.65); color: #fff; font-size: 22px; cursor: pointer;
       display: flex; align-items: center; justify-content: center; backdrop-filter: blur(4px);
     }
     .record-btn {
-      width: 66px; height: 66px; border: 3px solid #fff; border-radius: 50%;
-      background: #dc2626; color: #fff; font-size: 14px; font-weight: bold;
+      width: 68px; height: 68px; border: 3px solid #fff; border-radius: 50%;
+      background: #dc2626; color: #fff; font-size: 15px; font-weight: bold;
     }
     .recording-active {
       background: #fff; color: #dc2626; animation: pulse 1s infinite alternate;
     }
     @keyframes pulse { from { opacity: 0.6; } to { opacity: 1; } }
 
-    /* Indicator Status & Rec Time */
     .status-bar {
       position: absolute; top: 15px; left: 15px; right: 15px;
       display: flex; justify-content: space-between; align-items: center; z-index: 10;
@@ -58,655 +54,261 @@
       display: none; background: #dc2626; padding: 4px 10px; border-radius: 20px;
     }
 
-    /* Ecran Negru Anti-Supraîncălzire (OLED Saver pe telefonul de pe scenă) */
+    #oledSaver {
+      display: none; position: absolute; inset: 0; background: #000; z-index: 50;
+      align-items: center; justify-content: center; color: #555; font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="setupView">
+    <h2 style="margin-bottom: 4px;">🎧 DJ Stage Cam</h2>
+    <p style="color: #888; font-size: 13px;">Alege camera sau pupitrul:</p>
     
-mi, alege "REDMI: Camera Scenă" și canalul: <span id="displayRoomTag" class="text-brand-cyan font-mono font-bold"></span></p>
-          </div>
-          
-          <!-- QR Code to connect Redmi quickly -->
-          <div class="p-3 bg-white rounded-xl shadow-lg mt-2 inline-block">
-            <div id="qrcodeBox"></div>
-          </div>
-          <p class="text-[11px] text-slate-500 font-mono">Scanează cu camera de pe Redmi pentru conectare rapidă</p>
-        </div>
+    <input type="text" id="roomInput" placeholder="Nume sesiune" value="dj-stage-live">
 
-        <!-- Floating HUD Overlays -->
-        <div class="absolute top-3 left-3 z-20 flex items-center gap-2 pointer-events-none">
-          <div class="px-2.5 py-1 rounded-md bg-black/70 backdrop-blur-md border border-white/10 text-[11px] font-mono text-slate-200 flex items-center gap-1.5">
-            <span class="w-2 h-2 rounded-full bg-brand-neon"></span>
-            LIVE MONITOR
-          </div>
-          <div id="statLatency" class="px-2 py-1 rounded-md bg-black/70 backdrop-blur-md border border-white/10 text-[10px] font-mono text-brand-cyan">
-            &lt; 150ms P2P
-          </div>
-        </div>
+    <button class="role-btn btn-dj" onclick="startBooth()">Sunt Pupitrul (Honor / Ecran)</button>
+    <div style="color: #666; font-size: 12px;">— SAU —</div>
+    <button class="role-btn btn-cam" onclick="startCamera()">Sunt Camera (Redmi / Scenă)</button>
+  </div>
 
-        <!-- Touch Focus/Night Booster Status -->
-        <div id="nightFilterTag" class="hidden absolute top-3 right-3 z-20 px-2 py-1 rounded-md bg-amber-500/20 border border-amber-500/40 text-[10px] font-mono text-amber-300">
-          STAGE NIGHT BOOST ON
-        </div>
-      </div>
-
-      <!-- DJ Booth Video Enhancer Controls (Bottom Dock) -->
-      <div class="shrink-0 p-3 bg-brand-panel/95 border-t border-white/10 backdrop-blur-xl z-20 space-y-2">
-        <div class="flex items-center justify-between gap-2">
-          
-          <!-- Filter Controls Dropdown/Sliders -->
-          <div class="flex items-center gap-1.5">
-            <!-- Flash / Torch remote toggle -->
-            <button id="btnRemoteTorch" class="px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-medium text-slate-300 flex items-center gap-1.5 transition active:scale-95" title="Aprinde Blițul de la distanță">
-              <i data-lucide="flashlight" class="w-3.5 h-3.5 text-amber-400"></i>
-              <span class="hidden sm:inline">Bliț Scenă</span>
-            </button>
-
-            <!-- Mirror / Flip -->
-            <button id="btnFlipVideo" class="p-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 transition" title="Oglindește imaginea">
-              <i data-lucide="flip-horizontal" class="w-4 h-4"></i>
-            </button>
-
-            <!-- Night Club Booster Presets -->
-            <button id="btnNightBoost" class="px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-medium text-slate-300 flex items-center gap-1.5 transition" title="Mărește contrastul pentru cluburi întunecate">
-              <i data-lucide="moon" class="w-3.5 h-3.5 text-purple-400"></i>
-              <span>Night Boost</span>
-            </button>
-          </div>
-
-          <!-- Fullscreen & Disconnect -->
-          <div class="flex items-center gap-1.5">
-            <button id="btnToggleFullscreen" class="p-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 transition" title="Fullscreen">
-              <i data-lucide="maximize" class="w-4 h-4"></i>
-            </button>
-            <button id="btnLeaveReceiver" class="px-2.5 py-1.5 rounded-lg bg-red-950/40 hover:bg-red-900/60 border border-red-800/40 text-red-300 text-xs font-semibold transition">
-              Ieșire
-            </button>
-          </div>
-        </div>
-
-        <!-- Brightness & Contrast Quick Sliders for DJ environment -->
-        <div class="grid grid-cols-2 gap-3 pt-1 border-t border-white/5">
-          <div class="flex items-center gap-2">
-            <i data-lucide="sun" class="w-3 h-3 text-slate-400"></i>
-            <span class="text-[10px] font-mono text-slate-400">LUM</span>
-            <input type="range" id="sliderBrightness" min="60" max="220" value="100" class="w-full h-1 bg-white/10 rounded cursor-pointer" />
-          </div>
-          <div class="flex items-center gap-2">
-            <i data-lucide="contrast" class="w-3 h-3 text-slate-400"></i>
-            <span class="text-[10px] font-mono text-slate-400">CON</span>
-            <input type="range" id="sliderContrast" min="70" max="240" value="100" class="w-full h-1 bg-white/10 rounded cursor-pointer" />
-          </div>
-        </div>
-      </div>
+  <div id="streamView">
+    <div class="status-bar">
+      <span id="roleStatus">Inițializare...</span>
+      <div id="recIndicator" class="rec-badge">REC <span id="recTimer">00:00</span></div>
     </div>
 
+    <video id="mainVideo" autoplay playsinline muted></video>
 
-    <!-- ============================================== -->
-    <!-- VIEW 3: TRANSMITTER (STAGE CAMERA / REDMI VIEW) -->
-    <!-- ============================================== -->
-    <div id="transmitterView" class="hidden flex-1 flex-col relative w-full h-full bg-black overflow-hidden select-none">
-      
-      <!-- Camera Preview -->
-      <div class="relative flex-1 w-full h-full flex items-center justify-center overflow-hidden bg-black">
-        <video id="localVideo" autoplay playsinline muted class="w-full h-full object-cover"></video>
-
-        <!-- Status Tag Overlay -->
-        <div class="absolute top-3 left-3 z-20 flex items-center gap-2">
-          <div id="txLiveIndicator" class="px-2.5 py-1 rounded-md bg-black/80 backdrop-blur-md border border-white/10 text-[11px] font-mono text-red-400 flex items-center gap-1.5">
-            <span class="w-2 h-2 rounded-full bg-red-500 animate-ping"></span>
-            CAMERA ON AIR
-          </div>
-        </div>
-
-        <!-- Screen Dimmer / Overheat Protection Overlay -->
-        <div id="saverWakeArea" class="hidden absolute inset-0 z-40 bg-black flex flex-col items-center justify-center text-center p-6 cursor-pointer select-none">
-          <div class="w-16 h-16 rounded-full bg-white/5 border border-white/15 flex items-center justify-center mb-4">
-            <i data-lucide="shield-alert" class="w-8 h-8 text-brand-neon"></i>
-          </div>
-          <h2 class="text-lg font-bold text-white">MOD PROTECȚIE BATERIE ACTIV</h2>
-          <p class="text-xs text-slate-400 mt-1 max-w-xs">Ecranul este oprit pentru a preveni supraîncălzirea telefonului Redmi la distanță. Transmisia funcționează continuu.</p>
-          <div class="mt-6 px-4 py-2 rounded-xl bg-white/10 text-brand-cyan text-xs font-mono font-semibold animate-pulse border border-white/10">
-            Atinge ecranul pentru a reveni la comenzi
-          </div>
-        </div>
-      </div>
-
-      <!-- Camera Settings Dock for Redmi -->
-      <div class="shrink-0 p-3.5 bg-brand-panel/95 border-t border-white/10 backdrop-blur-xl z-20 space-y-3">
-        <div class="grid grid-cols-3 gap-2">
-          <!-- Torch local toggle -->
-          <button id="btnLocalTorch" class="p-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-medium text-slate-300 flex flex-col items-center justify-center gap-1 transition">
-            <i data-lucide="flashlight" class="w-4 h-4 text-amber-400"></i>
-            <span>Bliț</span>
-          </button>
-
-          <!-- Switch Front/Back Camera -->
-          <button id="btnSwitchCam" class="p-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-medium text-slate-300 flex flex-col items-center justify-center gap-1 transition">
-            <i data-lucide="switch-camera" class="w-4 h-4 text-brand-cyan"></i>
-            <span>Schimbă Cam</span>
-          </button>
-
-          <!-- Sleep / Screen Saver button -->
-          <button id="btnEnableSaver" class="p-2.5 rounded-xl bg-brand-neon/10 hover:bg-brand-neon/20 border border-brand-neon/30 text-xs font-medium text-brand-neon flex flex-col items-center justify-center gap-1 transition">
-            <i data-lucide="battery-charging" class="w-4 h-4"></i>
-            <span>Anti-Încălzire</span>
-          </button>
-        </div>
-
-        <div class="flex items-center justify-between pt-1">
-          <div class="text-[11px] font-mono text-slate-400 flex items-center gap-1">
-            <i data-lucide="wifi" class="w-3.5 h-3.5 text-brand-neon"></i>
-            Canal: <span id="txRoomLabel" class="text-white font-bold"></span>
-          </div>
-
-          <button id="btnLeaveTransmitter" class="px-3 py-1.5 rounded-lg bg-red-950/40 hover:bg-red-900/60 border border-red-800/40 text-red-300 text-xs font-semibold transition">
-            Oprește Camera
-          </button>
-        </div>
-      </div>
+    <div class="overlay-controls">
+      <button class="control-btn" onclick="toggleCameraFacing()" title="Schimbă Camera">🔄</button>
+      <button id="recButton" class="record-btn" onclick="toggleRecord()">REC</button>
+      <button class="control-btn" onclick="toggleOledSaver()" title="Ecran Negru">🌙</button>
     </div>
 
-  </main>
-
-  <!-- Help & GitHub Setup Modal -->
-  <div id="helpModal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-md hidden flex items-center justify-center p-4">
-    <div class="bg-brand-panel border border-white/10 rounded-2xl max-w-md w-full p-5 space-y-4 shadow-2xl overflow-y-auto max-h-[90vh]">
-      <div class="flex items-center justify-between border-b border-white/10 pb-3">
-        <h3 class="text-base font-bold text-white flex items-center gap-2">
-          <i data-lucide="github" class="w-5 h-5 text-white"></i>
-          Ghid GitHub Pages & Utilizare DJ
-        </h3>
-        <button id="btnCloseHelp" class="w-7 h-7 rounded-lg bg-white/5 flex items-center justify-center text-slate-400 hover:text-white">
-          <i data-lucide="x" class="w-4 h-4"></i>
-        </button>
-      </div>
-
-      <div class="space-y-3 text-xs text-slate-300 leading-relaxed">
-        <div class="bg-white/5 p-3 rounded-xl border border-white/5">
-          <p class="font-bold text-brand-cyan mb-1 font-mono uppercase">Pasul 1: Pune codul pe GitHub</p>
-          <ol class="list-decimal pl-4 space-y-1 text-slate-400">
-            <li>Creează un repository public pe GitHub numit <code class="text-white">stage-cam</code>.</li>
-            <li>Încarcă acest fișier ca <code class="text-white">index.html</code>.</li>
-            <li>Mergi la <strong>Settings → Pages → Source</strong> și alege branch-ul <code>main</code> / <code>root</code>.</li>
-            <li>Link-ul tău va fi gata: <code class="text-brand-cyan">https://user.github.io/stage-cam</code>.</li>
-          </ol>
-        </div>
-
-        <div class="bg-white/5 p-3 rounded-xl border border-white/5">
-          <p class="font-bold text-brand-neon mb-1 font-mono uppercase">Pasul 2: Conexiune în Club (Fără Net)</p>
-          <p class="text-slate-400">1. Deschide <strong>Hotspot</strong> pe telefonul Honor de la pupitru.<br/>
-          2. Conectează telefonul Redmi la acel hotspot.<br/>
-          3. Accesează link-ul GitHub pe ambele dispozitive, asigurați-vă că aveți același Room ID și apăsați rolurile respective.</p>
-        </div>
-
-        <div class="bg-white/5 p-3 rounded-xl border border-white/5">
-          <p class="font-bold text-purple-400 mb-1 font-mono uppercase">Pasul 3: Protecție Ecran & Lumină Club</p>
-          <p class="text-slate-400">Pe Redmi apasă <strong>Anti-Încălzire</strong> când începe show-ul; ecranul devine negru dar camera continuă să transmită continuu fără să se încingă bateria.</p>
-        </div>
-      </div>
-
-      <button id="btnCloseHelpBtn" class="w-full py-2.5 rounded-xl bg-brand-cyan text-black font-semibold text-xs transition hover:opacity-90">
-        Am înțeles, du-mă la pupitru!
-      </button>
+    <div id="oledSaver" onclick="toggleOledSaver()">
+      Atinge ecranul pentru a reaprinde imaginea
     </div>
   </div>
 
-  <!-- Application Logic -->
   <script>
-    // State management
-    const APP_STATE = {
-      role: null, // 'receiver' | 'transmitter' | null
-      room: localStorage.getItem('dj_cam_room') || 'club-stage-1',
-      peer: null,
-      call: null,
-      activeStream: null,
-      facingMode: 'environment', // back camera by default for stage
-      torchOn: false,
-      isFlipped: false,
-      nightBoost: false,
-      brightness: 100,
-      contrast: 100
-    };
+    let peer, connection, currentStream, mediaRecorder;
+    let recordedChunks = [];
+    let isRecording = false;
+    let recInterval, recSeconds = 0;
+    let currentFacingMode = "environment";
+    let isBoothRole = false;
 
-    // UI Elements References
-    const elements = {
-      setupView: document.getElementById('setupView'),
-      receiverView: document.getElementById('receiverView'),
-      transmitterView: document.getElementById('transmitterView'),
-      roomInput: document.getElementById('roomInput'),
-      btnGenRoom: document.getElementById('btnGenRoom'),
-      btnRoleReceiver: document.getElementById('btnRoleReceiver'),
-      btnRoleTransmitter: document.getElementById('btnRoleTransmitter'),
-      connBadge: document.getElementById('connBadge'),
-      connStatusText: document.getElementById('connStatusText'),
-      
-      // Receiver components
-      remoteVideo: document.getElementById('remoteVideo'),
-      waitingPlaceholder: document.getElementById('waitingPlaceholder'),
-      displayRoomTag: document.getElementById('displayRoomTag'),
-      qrcodeBox: document.getElementById('qrcodeBox'),
-      btnRemoteTorch: document.getElementById('btnRemoteTorch'),
-      btnFlipVideo: document.getElementById('btnFlipVideo'),
-      btnNightBoost: document.getElementById('btnNightBoost'),
-      nightFilterTag: document.getElementById('nightFilterTag'),
-      sliderBrightness: document.getElementById('sliderBrightness'),
-      sliderContrast: document.getElementById('sliderContrast'),
-      btnToggleFullscreen: document.getElementById('btnToggleFullscreen'),
-      btnLeaveReceiver: document.getElementById('btnLeaveReceiver'),
-
-      // Transmitter components
-      localVideo: document.getElementById('localVideo'),
-      txRoomLabel: document.getElementById('txRoomLabel'),
-      btnLocalTorch: document.getElementById('btnLocalTorch'),
-      btnSwitchCam: document.getElementById('btnSwitchCam'),
-      btnEnableSaver: document.getElementById('btnEnableSaver'),
-      saverWakeArea: document.getElementById('saverWakeArea'),
-      btnLeaveTransmitter: document.getElementById('btnLeaveTransmitter'),
-
-      // Help Modal & Toasts
-      btnHelp: document.getElementById('btnHelp'),
-      helpModal: document.getElementById('helpModal'),
-      btnCloseHelp: document.getElementById('btnCloseHelp'),
-      btnCloseHelpBtn: document.getElementById('btnCloseHelpBtn'),
-      toastBox: document.getElementById('toastBox'),
-      toastMsg: document.getElementById('toastMsg'),
-      toastIcon: document.getElementById('toastIcon')
-    };
-
-    // Helper: Show custom in-app notifications
-    function showToast(message, type = 'info') {
-      elements.toastMsg.innerText = message;
-      elements.toastBox.classList.remove('opacity-0', '-translate-y-20', 'pointer-events-none');
-      elements.toastBox.classList.add('opacity-100', 'translate-y-0');
-      
-      setTimeout(() => {
-        elements.toastBox.classList.add('opacity-0', '-translate-y-20', 'pointer-events-none');
-        elements.toastBox.classList.remove('opacity-100', 'translate-y-0');
-      }, 3500);
-    }
-
-    // Helper: Update Header connection status
-    function setConnectionStatus(status, text) {
-      elements.connBadge.className = 'flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-mono font-medium border';
-      
-      if (status === 'connected') {
-        elements.connBadge.classList.add('bg-emerald-950/40', 'text-emerald-400', 'border-emerald-800/40');
-        elements.connBadge.children[0].className = 'w-2 h-2 rounded-full bg-emerald-400';
-        elements.connStatusText.innerText = text || 'CONNECTED';
-      } else if (status === 'waiting') {
-        elements.connBadge.classList.add('bg-amber-950/40', 'text-amber-400', 'border-amber-800/40');
-        elements.connBadge.children[0].className = 'w-2 h-2 rounded-full bg-amber-400 animate-pulse';
-        elements.connStatusText.innerText = text || 'WAITING PEER';
-      } else {
-        elements.connBadge.classList.add('bg-red-950/40', 'text-red-400', 'border-red-800/40');
-        elements.connBadge.children[0].className = 'w-2 h-2 rounded-full bg-red-500';
-        elements.connStatusText.innerText = text || 'OFFLINE';
+    // Configurație cu servere STUN Google pentru trecere prin firewall/rețele mobile
+    const peerConfig = {
+      config: {
+        iceServers: [
+          { urls: 'stun:stun.l.google.com:19302' },
+          { urls: 'stun:stun1.l.google.com:19302' }
+        ]
       }
-    }
+    };
 
-    // Initialize Room Input
-    elements.roomInput.value = APP_STATE.room;
-    elements.roomInput.addEventListener('input', (e) => {
-      const sanitized = e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, '');
-      elements.roomInput.value = sanitized;
-      APP_STATE.room = sanitized || 'club-stage-1';
-      localStorage.setItem('dj_cam_room', APP_STATE.room);
-    });
+    // --- ROL 1: PUPITRU (HONOR) ---
+    function startBooth() {
+      isBoothRole = true;
+      const roomId = document.getElementById("roomInput").value.trim() || "dj-stage-live";
+      peer = new Peer(roomId, peerConfig);
 
-    elements.btnGenRoom.addEventListener('click', () => {
-      const randomCode = 'stage-' + Math.floor(100 + Math.random() * 900);
-      elements.roomInput.value = randomCode;
-      APP_STATE.room = randomCode;
-      localStorage.setItem('dj_cam_room', randomCode);
-      showToast(`Canal nou generat: ${randomCode}`);
-    });
-
-    // Check URL parameters for direct auto-join (useful for QR code scan)
-    const urlParams = new URLSearchParams(window.location.search);
-    const roomFromUrl = urlParams.get('room');
-    const roleFromUrl = urlParams.get('role');
-    if (roomFromUrl) {
-      APP_STATE.room = roomFromUrl;
-      elements.roomInput.value = roomFromUrl;
-      localStorage.setItem('dj_cam_room', roomFromUrl);
-    }
-
-    // ==============================================
-    // RECEIVER IMPLEMENTATION (DJ CONSOLE / HONOR)
-    // ==============================================
-    elements.btnRoleReceiver.addEventListener('click', startReceiverMode);
-
-    function startReceiverMode() {
-      APP_STATE.role = 'receiver';
-      elements.setupView.classList.add('hidden');
-      elements.receiverView.classList.remove('hidden');
-      elements.displayRoomTag.innerText = APP_STATE.room;
-
-      // Generate QR Code for easy scanning from Redmi camera
-      elements.qrcodeBox.innerHTML = '';
-      const targetUrl = `${window.location.origin}${window.location.pathname}?room=${encodeURIComponent(APP_STATE.room)}&role=tx`;
-      new QRCode(elements.qrcodeBox, {
-        text: targetUrl,
-        width: 140,
-        height: 140,
-        colorDark: "#000000",
-        colorLight: "#ffffff",
-        correctLevel: QRCode.CorrectLevel.M
+      peer.on("open", () => {
+        document.getElementById("setupView").style.display = "none";
+        document.getElementById("streamView").style.display = "block";
+        document.getElementById("roleStatus").innerText = `Pupitru activ [${roomId}]. Aștept camera...`;
       });
 
-      setConnectionStatus('waiting', 'WAITING REDMI');
+      peer.on("connection", (conn) => {
+        connection = conn;
+      });
 
-      // The receiver listens with a fixed ID based on the room name
-      const receiverPeerId = `djcam-room-${APP_STATE.room}-console`;
+      peer.on("call", (call) => {
+        call.answer(); // Răspunde apelului video primit de la camera
+        call.on("stream", (remoteStream) => {
+          currentStream = remoteStream;
+          const videoEl = document.getElementById("mainVideo");
+          videoEl.srcObject = remoteStream;
+          videoEl.muted = false;
+          videoEl.play().catch(() => {});
+          document.getElementById("roleStatus").innerText = "LIVE (Conectat la scenă)";
+        });
+      });
 
-      try {
-        if (APP_STATE.peer) APP_STATE.peer.destroy();
-        APP_STATE.peer = new Peer(receiverPeerId, {
-          debug: 1,
-          config: {
-            iceServers: [
-              { urls: 'stun:stun.l.google.com:19302' },
-              { urls: 'stun:global.stun.twilio.com:3478' }
-            ]
+      peer.on("error", (err) => {
+        alert("Eroare PeerJS (Pupitru): " + err.type + " - " + err.message);
+      });
+    }
+
+    // --- ROL 2: CAMERA (REDMI) ---
+    async function startCamera() {
+      isBoothRole = false;
+      const roomId = document.getElementById("roomInput").value.trim() || "dj-stage-live";
+      peer = new Peer(peerConfig);
+
+      peer.on("open", async () => {
+        document.getElementById("setupView").style.display = "none";
+        document.getElementById("streamView").style.display = "block";
+        document.getElementById("roleStatus").innerText = "Pornire cameră...";
+
+        const streamOk = await initLocalStream();
+        if (!streamOk) return;
+
+        // Creează canal de date pentru comenzi (ex: switch camera din pupitru)
+        connection = peer.connect(roomId);
+        connection.on("data", (data) => {
+          if (data && data.action === "switchCamera") {
+            switchCameraHardware();
           }
         });
 
-        APP_STATE.peer.on('open', (id) => {
-          showToast(`Pupitrul Honor este online pe canalul [${APP_STATE.room}]`);
-        });
+        // Trimite stream-ul video către pupitru
+        peer.call(roomId, currentStream);
+        document.getElementById("roleStatus").innerText = "LIVE (Transmisie activă)";
+      });
 
-        // Listen for incoming call from camera
-        APP_STATE.peer.on('call', (call) => {
-          APP_STATE.call = call;
-          call.answer(); // Honor answers without sending stream
-
-          call.on('stream', (remoteStream) => {
-            elements.remoteVideo.srcObject = remoteStream;
-            elements.waitingPlaceholder.classList.add('hidden');
-            setConnectionStatus('connected', 'STAGE LIVE');
-            showToast('Conexiune stabilită cu succes cu telefonul Redmi!');
-          });
-
-          call.on('close', () => {
-            elements.waitingPlaceholder.classList.remove('hidden');
-            setConnectionStatus('waiting', 'CAMERA DISCONNECTED');
-            showToast('Semnalul camerei a fost întrerupt.');
-          });
-        });
-
-        // Listen for data connection for remote control (flash toggle, etc.)
-        APP_STATE.peer.on('connection', (conn) => {
-          APP_STATE.dataConnection = conn;
-          conn.on('data', (data) => {
-            if (data.type === 'torch-status') {
-              APP_STATE.torchOn = data.value;
-              updateTorchUI();
-            }
-          });
-        });
-
-        APP_STATE.peer.on('error', (err) => {
-          console.error('PeerJS error:', err);
-          if (err.type === 'unavailable-id') {
-            showToast('Canalul este deja ocupat de o altă sesiune de pupitru.', 'error');
-          } else {
-            showToast('Eroare conexiune: ' + err.type);
-          }
-        });
-
-      } catch (err) {
-        showToast('Nu s-a putut inițializa WebRTC: ' + err.message);
-      }
+      peer.on("error", (err) => {
+        alert("Eroare conexiune: " + err.type + " (Verifică dacă ai pornit întâi Pupitrul)");
+      });
     }
 
-    // Receiver: Adjust Filters & Boost
-    function applyVideoFilters() {
-      let b = APP_STATE.brightness;
-      let c = APP_STATE.contrast;
-      let flip = APP_STATE.isFlipped ? 'scaleX(-1)' : 'scaleX(1)';
-
-      if (APP_STATE.nightBoost) {
-        // High-contrast neon enhancement for clubs
-        elements.remoteVideo.style.filter = `brightness(${b * 1.3}%) contrast(${c * 1.4}%) saturate(140%)`;
-      } else {
-        elements.remoteVideo.style.filter = `brightness(${b}%) contrast(${c}%)`;
+    async function initLocalStream() {
+      if (currentStream) {
+        currentStream.getTracks().forEach(t => t.stop());
       }
-      elements.remoteVideo.style.transform = flip;
-    }
-
-    elements.sliderBrightness.addEventListener('input', (e) => {
-      APP_STATE.brightness = e.target.value;
-      applyVideoFilters();
-    });
-
-    elements.sliderContrast.addEventListener('input', (e) => {
-      APP_STATE.contrast = e.target.value;
-      applyVideoFilters();
-    });
-
-    elements.btnFlipVideo.addEventListener('click', () => {
-      APP_STATE.isFlipped = !APP_STATE.isFlipped;
-      applyVideoFilters();
-      showToast(APP_STATE.isFlipped ? 'Imagine oglindită' : 'Imagine normală');
-    });
-
-    elements.btnNightBoost.addEventListener('click', () => {
-      APP_STATE.nightBoost = !APP_STATE.nightBoost;
-      if (APP_STATE.nightBoost) {
-        elements.btnNightBoost.classList.add('bg-purple-900/50', 'text-purple-300', 'border-purple-500/50');
-        elements.nightFilterTag.classList.remove('hidden');
-        showToast('Mod amplificare club activat');
-      } else {
-        elements.btnNightBoost.classList.remove('bg-purple-900/50', 'text-purple-300', 'border-purple-500/50');
-        elements.nightFilterTag.classList.add('hidden');
-        showToast('Filtre normale restaurate');
-      }
-      applyVideoFilters();
-    });
-
-    // Remote torch toggle request to Redmi
-    elements.btnRemoteTorch.addEventListener('click', () => {
-      if (APP_STATE.dataConnection && APP_STATE.dataConnection.open) {
-        APP_STATE.torchOn = !APP_STATE.torchOn;
-        APP_STATE.dataConnection.send({ type: 'toggle-torch', value: APP_STATE.torchOn });
-        updateTorchUI();
-      } else {
-        showToast('Camera nu este încă asociată pentru comenzi.');
-      }
-    });
-
-    function updateTorchUI() {
-      if (APP_STATE.torchOn) {
-        elements.btnRemoteTorch.classList.add('bg-amber-500/20', 'text-amber-300', 'border-amber-500/40');
-      } else {
-        elements.btnRemoteTorch.classList.remove('bg-amber-500/20', 'text-amber-300', 'border-amber-500/40');
-      }
-    }
-
-    // Toggle Fullscreen on Honor
-    elements.btnToggleFullscreen.addEventListener('click', () => {
-      if (!document.fullscreenElement) {
-        document.documentElement.requestFullscreen().catch(() => {});
-      } else {
-        if (document.exitFullscreen) document.exitFullscreen();
-      }
-    });
-
-    elements.btnLeaveReceiver.addEventListener('click', () => {
-      if (APP_STATE.peer) APP_STATE.peer.destroy();
-      elements.receiverView.classList.add('hidden');
-      elements.setupView.classList.remove('hidden');
-      setConnectionStatus('offline', 'DISCONNECTED');
-    });
-
-
-    // ==============================================
-    // TRANSMITTER IMPLEMENTATION (STAGE CAMERA / REDMI)
-    // ==============================================
-    elements.btnRoleTransmitter.addEventListener('click', startTransmitterMode);
-
-    async function startTransmitterMode() {
-      APP_STATE.role = 'transmitter';
-      elements.setupView.classList.add('hidden');
-      elements.transmitterView.classList.remove('hidden');
-      elements.txRoomLabel.innerText = APP_STATE.room;
-
-      setConnectionStatus('waiting', 'STARTING CAMERA');
-
       try {
-        await initLocalCamera();
-        connectToConsole();
-      } catch (err) {
-        showToast('Nu s-a putut accesa camera: ' + err.message);
-        setConnectionStatus('offline', 'CAM ERROR');
+        currentStream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: { ideal: currentFacingMode },
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
+          },
+          audio: true
+        });
+        const v = document.getElementById("mainVideo");
+        v.srcObject = currentStream;
+        v.muted = true; // Mute local pentru a preveni microfonia (ecoul)
+        await v.play().catch(() => {});
+        return true;
+      } catch (e) {
+        alert("Nu se poate accesa camera! Asigură-te că rulezi de pe HTTPS și ai acceptat permisiunile: " + e.message);
+        return false;
       }
     }
 
-    async function initLocalCamera() {
-      if (APP_STATE.activeStream) {
-        APP_STATE.activeStream.getTracks().forEach(track => track.stop());
-      }
-
-      // 720p / 30fps is the sweet-spot for zero heating and instant streaming
-      const constraints = {
-        audio: false,
-        video: {
-          facingMode: APP_STATE.facingMode,
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-          frameRate: { ideal: 30, max: 30 }
+    async function toggleCameraFacing() {
+      if (isBoothRole) {
+        if (connection && connection.open) {
+          connection.send({ action: "switchCamera" });
+        } else {
+          alert("Camera nu este conectată încă!");
         }
+      } else {
+        await switchCameraHardware();
+      }
+    }
+
+    async function switchCameraHardware() {
+      currentFacingMode = (currentFacingMode === "environment") ? "user" : "environment";
+      const ok = await initLocalStream();
+      if (ok && peer) {
+        const roomId = document.getElementById("roomInput").value.trim() || "dj-stage-live";
+        peer.call(roomId, currentStream);
+      }
+    }
+
+    // --- ÎNREGISTRARE VIDEO + DESCĂRCARE AUTOMATĂ ---
+    function toggleRecord() {
+      if (!isRecording) {
+        startRecording();
+      } else {
+        stopRecording();
+      }
+    }
+
+    function getSupportedMimeType() {
+      const types = [
+        'video/webm;codecs=vp8,opus',
+        'video/webm',
+        'video/mp4;codecs=h264,aac',
+        'video/mp4'
+      ];
+      for (let t of types) {
+        if (MediaRecorder.isTypeSupported(t)) return t;
+      }
+      return '';
+    }
+
+    function startRecording() {
+      if (!currentStream) {
+        alert("Așteaptă semnalul video înainte de a înregistra.");
+        return;
+      }
+
+      recordedChunks = [];
+      const mime = getSupportedMimeType();
+      try {
+        mediaRecorder = mime ? new MediaRecorder(currentStream, { mimeType: mime }) : new MediaRecorder(currentStream);
+      } catch (e) {
+        alert("Recorderul video nu este suportat de browserul curent: " + e.message);
+        return;
+      }
+
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) recordedChunks.push(e.data);
       };
 
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
-      APP_STATE.activeStream = stream;
-      elements.localVideo.srcObject = stream;
+      mediaRecorder.onstop = saveVideoFile;
+      mediaRecorder.start(1000);
+
+      isRecording = true;
+      document.getElementById("recButton").innerText = "STOP";
+      document.getElementById("recButton").classList.add("recording-active");
+      document.getElementById("recIndicator").style.display = "block";
+
+      recSeconds = 0;
+      recInterval = setInterval(() => {
+        recSeconds++;
+        const m = String(Math.floor(recSeconds / 60)).padStart(2, '0');
+        const s = String(recSeconds % 60).padStart(2, '0');
+        document.getElementById("recTimer").innerText = `${m}:${s}`;
+      }, 1000);
     }
 
-    function connectToConsole() {
-      const consoleTargetId = `djcam-room-${APP_STATE.room}-console`;
+    function stopRecording() {
+      if (!mediaRecorder || mediaRecorder.state === "inactive") return;
+      mediaRecorder.stop();
+      isRecording = false;
 
-      if (APP_STATE.peer) APP_STATE.peer.destroy();
-      APP_STATE.peer = new Peer({
-        debug: 1,
-        config: {
-          iceServers: [
-            { urls: 'stun:stun.l.google.com:19302' },
-            { urls: 'stun:global.stun.twilio.com:3478' }
-          ]
-        }
-      });
-
-      APP_STATE.peer.on('open', () => {
-        showToast('Redmi este gata. Se apelează pupitrul Honor...');
-        setConnectionStatus('waiting', 'CALLING PUPITRU');
-
-        // Make WebRTC Video Call to the console
-        const call = APP_STATE.peer.call(consoleTargetId, APP_STATE.activeStream);
-        APP_STATE.call = call;
-
-        // Open Data Channel to receive flash commands from Honor
-        const conn = APP_STATE.peer.connect(consoleTargetId);
-        APP_STATE.dataConnection = conn;
-
-        conn.on('open', () => {
-          setConnectionStatus('connected', 'TRANSMITTING');
-          showToast('Conectat la pupitrul DJ!');
-        });
-
-        conn.on('data', async (data) => {
-          if (data.type === 'toggle-torch') {
-            await setTorchState(data.value);
-          }
-        });
-
-        conn.on('close', () => {
-          setConnectionStatus('waiting', 'PUPITRU CLOSED');
-        });
-      });
-
-      APP_STATE.peer.on('error', (err) => {
-        console.warn('Eroare transmitere:', err);
-        setConnectionStatus('waiting', 'RETRYING...');
-        setTimeout(connectToConsole, 4000); // Auto reconnect in case console was restarted
-      });
+      clearInterval(recInterval);
+      document.getElementById("recButton").innerText = "REC";
+      document.getElementById("recButton").classList.remove("recording-active");
+      document.getElementById("recIndicator").style.display = "none";
     }
 
-    // Flashlight / Torch control via ImageCapture / Advanced track constraints
-    async function setTorchState(enable) {
-      if (!APP_STATE.activeStream) return;
-      const videoTrack = APP_STATE.activeStream.getVideoTracks()[0];
-      if (!videoTrack) return;
-
-      try {
-        const capabilities = videoTrack.getCapabilities ? videoTrack.getCapabilities() : {};
-        if (capabilities.torch) {
-          await videoTrack.applyConstraints({
-            advanced: [{ torch: enable }]
-          });
-          APP_STATE.torchOn = enable;
-          if (APP_STATE.dataConnection && APP_STATE.dataConnection.open) {
-            APP_STATE.dataConnection.send({ type: 'torch-status', value: enable });
-          }
-        } else {
-          showToast('Telefonul nu suportă comanda de lanternă prin browser.');
-        }
-      } catch (err) {
-        console.warn('Torch unsupported on this device', err);
-      }
+    function saveVideoFile() {
+      if (recordedChunks.length === 0) return;
+      const blob = new Blob(recordedChunks, { type: 'video/mp4' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const timeStamp = new Date().toISOString().replace(/[:.]/g, '-');
+      a.href = url;
+      a.download = `DJ-REC-${timeStamp}.mp4`;
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => {
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }, 300);
     }
 
-    elements.btnLocalTorch.addEventListener('click', () => {
-      setTorchState(!APP_STATE.torchOn);
-    });
-
-    // Switch Front / Back Camera on Redmi
-    elements.btnSwitchCam.addEventListener('click', async () => {
-      APP_STATE.facingMode = APP_STATE.facingMode === 'environment' ? 'user' : 'environment';
-      await initLocalCamera();
-      if (APP_STATE.call && APP_STATE.peer) {
-        // Re-call pupitrul with new track
-        const consoleTargetId = `djcam-room-${APP_STATE.room}-console`;
-        APP_STATE.call = APP_STATE.peer.call(consoleTargetId, APP_STATE.activeStream);
-      }
-      showToast('Camera a fost comutată.');
-    });
-
-    // Battery / Anti-overheat Saver screen for Redmi
-    elements.btnEnableSaver.addEventListener('click', () => {
-      elements.saverWakeArea.classList.remove('hidden');
-      document.body.classList.add('screen-saver-active');
-      showToast('Mod anti-încălzire activ. Atinge ecranul pentru a debloca.');
-    });
-
-    elements.saverWakeArea.addEventListener('click', () => {
-      elements.saverWakeArea.classList.add('hidden');
-      document.body.classList.remove('screen-saver-active');
-    });
-
-    elements.btnLeaveTransmitter.addEventListener('click', () => {
-      if (APP_STATE.activeStream) {
-        APP_STATE.activeStream.getTracks().forEach(t => t.stop());
-      }
-      if (APP_STATE.peer) APP_STATE.peer.destroy();
-      elements.transmitterView.classList.add('hidden');
-      elements.setupView.classList.remove('hidden');
-      setConnectionStatus('offline', 'STOPPED');
-    });
-
-
-    // ==============================================
-    // HELP MODAL CONTROLS
-    // ==============================================
-    elements.btnHelp.addEventListener('click', () => elements.helpModal.classList.remove('hidden'));
-    elements.btnCloseHelp.addEventListener('click', () => elements.helpModal.classList.add('hidden'));
-    elements.btnCloseHelpBtn.addEventListener('click', () => elements.helpModal.classList.add('hidden'));
-
-    // Handle auto-role query from QR code
-    window.addEventListener('load', () => {
-      lucide.createIcons();
-      if (roleFromUrl === 'tx') {
-        startTransmitterMode();
-      }
-    });
+    function toggleOledSaver() {
+      const el = document.getElementById("oledSaver");
+      el.style.display = (el.style.display === "flex") ? "none" : "flex";
+    }
   </script>
 </body>
 </html>
