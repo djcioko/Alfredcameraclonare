@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>DJ Stage Cam Pro</title>
+  <title>DJ Stage Cam Lite</title>
   <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
@@ -28,4 +28,302 @@
     video { width: 100%; height: 100%; object-fit: contain; }
 
     .status-bar {
-      position: absolute; top: 12px; left: 12px; right: 1
+      position: absolute; top: 12px; left: 12px; right: 12px;
+      display: flex; justify-content: space-between; align-items: center; z-index: 20;
+      font-size: 13px; font-weight: bold; text-shadow: 1px 1px 3px #000;
+    }
+    .rec-badge {
+      display: none; background: #dc2626; padding: 4px 10px; border-radius: 20px;
+    }
+
+    .overlay-controls {
+      position: absolute; bottom: 25px; left: 0; right: 0;
+      display: flex; justify-content: center; align-items: center; gap: 18px; z-index: 20;
+    }
+    .control-btn {
+      width: 54px; height: 54px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.4);
+      background: rgba(0,0,0,0.65); color: #fff; font-size: 20px; cursor: pointer;
+      display: flex; align-items: center; justify-content: center; backdrop-filter: blur(4px);
+    }
+    .record-btn {
+      width: 68px; height: 68px; border: 3px solid #fff; border-radius: 50%;
+      background: #dc2626; color: #fff; font-size: 15px; font-weight: bold;
+    }
+    .recording-active {
+      background: #fff; color: #dc2626; animation: pulse 1s infinite alternate;
+    }
+    @keyframes pulse { from { opacity: 0.6; } to { opacity: 1; } }
+
+    #oledSaver {
+      display: none; position: absolute; inset: 0; background: #000; z-index: 60;
+      align-items: center; justify-content: center; color: #555; font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="setupView">
+    <h2 style="margin-bottom: 4px;">🎧 DJ Stage Cam</h2>
+    <p style="color: #888; font-size: 13px;">Cod cameră:</p>
+    <input type="text" id="roomInput" value="dj-cioko-live">
+
+    <button class="role-btn btn-cam" onclick="startCameraServer()">1. Sunt Camera (Redmi / Scenă)</button>
+    <div style="color: #666; font-size: 12px;">— SAU —</div>
+    <button class="role-btn btn-dj" onclick="startBoothClient()">2. Sunt Pupitrul (Honor / Monitor)</button>
+  </div>
+
+  <div id="streamView" onclick="handleTapToPlay()">
+    <div class="status-bar">
+      <span id="roleStatus">Conectare...</span>
+      <div id="recIndicator" class="rec-badge">REC <span id="recTimer">00:00</span></div>
+    </div>
+
+    <!-- Video curat direct -->
+    <video id="mainVideo" autoplay playsinline muted></video>
+
+    <div class="overlay-controls">
+      <button class="control-btn" onclick="toggleCameraFacing(event)" title="Schimbă Camera">🔄</button>
+      <button id="recButton" class="record-btn" onclick="toggleRecord(event)">REC</button>
+      <button id="audioToggleBtn" class="control-btn" onclick="toggleMonitorAudio(event)" title="Sunet în telefon">🔇</button>
+      <button class="control-btn" onclick="toggleOledSaver(event)" title="Ecran Negru">🌙</button>
+    </div>
+
+    <div id="oledSaver" onclick="toggleOledSaver(event)">
+      Atinge ecranul pentru a reaprinde imaginea
+    </div>
+  </div>
+
+  <script>
+    let peer, connection, currentCall;
+    let localStream, remoteStream;
+    let mediaRecorder, recordedChunks = [];
+    let isRecording = false;
+    let recInterval, recSeconds = 0;
+    let currentFacingMode = "environment";
+    let isBoothRole = false;
+
+    const peerConfig = {
+      config: {
+        iceServers: [
+          { urls: 'stun:stun.l.google.com:19302' },
+          { urls: 'stun:stun1.l.google.com:19302' }
+        ]
+      }
+    };
+
+    function handleTapToPlay() {
+      const v = document.getElementById("mainVideo");
+      if (v.paused) v.play().catch(() => {});
+    }
+
+    // --- 1. ROL CAMERA (REDMI) ---
+    async function startCameraServer() {
+      isBoothRole = false;
+      const camId = document.getElementById("roomInput").value.trim() || "dj-cioko-live";
+
+      document.getElementById("setupView").style.display = "none";
+      document.getElementById("streamView").style.display = "block";
+      document.getElementById("roleStatus").innerText = "Pornire cameră...";
+
+      const ok = await getCameraStream();
+      if (!ok) return;
+
+      peer = new Peer(camId, peerConfig);
+
+      peer.on("open", () => {
+        document.getElementById("roleStatus").innerText = `Camera gata [${camId}]`;
+      });
+
+      peer.on("connection", (conn) => {
+        connection = conn;
+        conn.on("data", (data) => {
+          if (data && data.action === "requestStream") {
+            currentCall = peer.call(conn.peer, localStream);
+            document.getElementById("roleStatus").innerText = "Transmisie activă";
+          }
+          if (data && data.action === "switchCamera") {
+            switchCameraHardware();
+          }
+        });
+      });
+
+      peer.on("error", (err) => {
+        if (err.type === "unavailable-id") {
+          alert("Numele este deja folosit. Schimbă codul sau dă refresh pe celălalt telefon.");
+        }
+      });
+    }
+
+    async function getCameraStream() {
+      if (localStream) {
+        localStream.getTracks().forEach(t => t.stop());
+      }
+      try {
+        localStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: currentFacingMode }, width: { ideal: 1280 }, height: { ideal: 720 } },
+          audio: true
+        });
+        const v = document.getElementById("mainVideo");
+        v.srcObject = localStream;
+        v.muted = true;
+        await v.play().catch(() => {});
+        return true;
+      } catch (e) {
+        alert("Eroare acces cameră: " + e.message);
+        return false;
+      }
+    }
+
+    async function switchCameraHardware() {
+      currentFacingMode = (currentFacingMode === "environment") ? "user" : "environment";
+      const ok = await getCameraStream();
+      if (ok && connection && connection.open) {
+        currentCall = peer.call(connection.peer, localStream);
+      }
+    }
+
+    // --- 2. ROL PUPITRU (HONOR) ---
+    function startBoothClient() {
+      isBoothRole = true;
+      const camId = document.getElementById("roomInput").value.trim() || "dj-cioko-live";
+
+      document.getElementById("setupView").style.display = "none";
+      document.getElementById("streamView").style.display = "block";
+      document.getElementById("roleStatus").innerText = `Conectare la ${camId}...`;
+
+      peer = new Peer(peerConfig);
+
+      peer.on("open", () => {
+        connectToHost(camId);
+      });
+
+      peer.on("call", (call) => {
+        currentCall = call;
+        call.answer();
+        call.on("stream", (stream) => {
+          remoteStream = stream;
+          const v = document.getElementById("mainVideo");
+          v.srcObject = stream;
+          v.muted = true; // Pornește mut pentru a preveni microfonia când telefoanele sunt aproape
+          v.play().catch(() => {});
+          document.getElementById("roleStatus").innerText = "LIVE (Scenă)";
+        });
+      });
+    }
+
+    function connectToHost(camId) {
+      connection = peer.connect(camId);
+      connection.on("open", () => {
+        connection.send({ action: "requestStream" });
+      });
+      connection.on("close", () => {
+        document.getElementById("roleStatus").innerText = "Reconectare...";
+        setTimeout(() => connectToHost(camId), 2000);
+      });
+    }
+
+    function toggleCameraFacing(e) {
+      if (e) e.stopPropagation();
+      if (isBoothRole) {
+        if (connection && connection.open) {
+          connection.send({ action: "switchCamera" });
+        } else {
+          alert("Camera nu este conectată!");
+        }
+      } else {
+        switchCameraHardware();
+      }
+    }
+
+    // Control sunet în difuzorul telefonului Honor (Fără efect asupra înregistrării)
+    function toggleMonitorAudio(e) {
+      if (e) e.stopPropagation();
+      const v = document.getElementById("mainVideo");
+      const btn = document.getElementById("audioToggleBtn");
+      v.muted = !v.muted;
+      btn.innerText = v.muted ? "🔇" : "🔊";
+    }
+
+    // --- RECORDING DIRECT DIN SEMNAL ---
+    function toggleRecord(e) {
+      if (e) e.stopPropagation();
+      if (!isRecording) startRecording();
+      else stopRecording();
+    }
+
+    function startRecording() {
+      const targetStream = isBoothRole ? remoteStream : localStream;
+      if (!targetStream) {
+        alert("Așteaptă semnalul video înainte de a înregistra!");
+        return;
+      }
+
+      recordedChunks = [];
+      const mimeTypes = ['video/mp4', 'video/webm;codecs=vp8,opus', 'video/webm'];
+      let selectedMime = mimeTypes.find(t => MediaRecorder.isTypeSupported(t)) || '';
+
+      try {
+        mediaRecorder = selectedMime ? new MediaRecorder(targetStream, { mimeType: selectedMime }) : new MediaRecorder(targetStream);
+      } catch (e) {
+        mediaRecorder = new MediaRecorder(targetStream);
+      }
+
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) recordedChunks.push(e.data);
+      };
+
+      mediaRecorder.onstop = saveVideoFile;
+      mediaRecorder.start(1000);
+
+      isRecording = true;
+      document.getElementById("recButton").innerText = "STOP";
+      document.getElementById("recButton").classList.add("recording-active");
+      document.getElementById("recIndicator").style.display = "block";
+
+      recSeconds = 0;
+      recInterval = setInterval(() => {
+        recSeconds++;
+        const m = String(Math.floor(recSeconds / 60)).padStart(2, '0');
+        const s = String(recSeconds % 60).padStart(2, '0');
+        document.getElementById("recTimer").innerText = `${m}:${s}`;
+      }, 1000);
+    }
+
+    function stopRecording() {
+      if (!mediaRecorder || mediaRecorder.state === "inactive") return;
+      mediaRecorder.stop();
+      isRecording = false;
+
+      clearInterval(recInterval);
+      document.getElementById("recButton").innerText = "REC";
+      document.getElementById("recButton").classList.remove("recording-active");
+      document.getElementById("recIndicator").style.display = "none";
+    }
+
+    function saveVideoFile() {
+      if (recordedChunks.length === 0) return;
+      const isMp4 = (mediaRecorder.mimeType || '').includes("mp4");
+      const ext = isMp4 ? "mp4" : "webm";
+      const blob = new Blob(recordedChunks, { type: isMp4 ? 'video/mp4' : 'video/webm' });
+      
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const timeStamp = new Date().toISOString().replace(/[:.]/g, '-');
+      a.href = url;
+      a.download = `DJ-REC-${timeStamp}.${ext}`;
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => {
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }, 300);
+    }
+
+    function toggleOledSaver(e) {
+      if (e) e.stopPropagation();
+      const el = document.getElementById("oledSaver");
+      el.style.display = (el.style.display === "flex") ? "none" : "flex";
+    }
+  </script>
+</body>
+</html>
