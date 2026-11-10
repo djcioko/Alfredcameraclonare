@@ -1,226 +1,24 @@
-<!DOCTYPE html>
-<html lang="ro">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>DJ Stage Cam Pro</title>
-  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
-    body { background: #000; color: #fff; font-family: -apple-system, BlinkMacSystemFont, sans-serif; overflow: hidden; height: 100vh; }
-    
-    #setupView {
-      display: flex; flex-direction: column; align-items: center; justify-content: center;
-      height: 100vh; padding: 20px; text-align: center; gap: 14px;
-    }
-    .role-btn {
-      width: 100%; max-width: 320px; padding: 16px; border-radius: 12px; border: none;
-      font-size: 16px; font-weight: bold; cursor: pointer; color: #fff;
-    }
-    .btn-dj { background: #059669; }
-    .btn-cam { background: #2563eb; }
-    input {
-      padding: 14px; width: 100%; max-width: 320px; border-radius: 8px; border: 1px solid #333;
-      background: #111; color: #fff; text-align: center; font-size: 16px;
-    }
+    // --- ÎNREGISTRARE VIDEO COMPATIBILĂ WHATSAPP / TELEFON ---
+    let chosenMimeType = "";
 
-    #streamView { display: none; position: relative; width: 100vw; height: 100vh; background: #000; }
-    video { width: 100%; height: 100%; object-fit: contain; }
-    
-    .overlay-controls {
-      position: absolute; bottom: 25px; left: 0; right: 0;
-      display: flex; justify-content: center; align-items: center; gap: 20px; z-index: 10;
-    }
-    .control-btn {
-      width: 56px; height: 56px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.4);
-      background: rgba(0,0,0,0.65); color: #fff; font-size: 22px; cursor: pointer;
-      display: flex; align-items: center; justify-content: center; backdrop-filter: blur(4px);
-    }
-    .record-btn {
-      width: 68px; height: 68px; border: 3px solid #fff; border-radius: 50%;
-      background: #dc2626; color: #fff; font-size: 15px; font-weight: bold;
-    }
-    .recording-active {
-      background: #fff; color: #dc2626; animation: pulse 1s infinite alternate;
-    }
-    @keyframes pulse { from { opacity: 0.6; } to { opacity: 1; } }
-
-    .status-bar {
-      position: absolute; top: 15px; left: 15px; right: 15px;
-      display: flex; justify-content: space-between; align-items: center; z-index: 10;
-      font-size: 13px; font-weight: bold; text-shadow: 1px 1px 3px #000;
-    }
-    .rec-badge {
-      display: none; background: #dc2626; padding: 4px 10px; border-radius: 20px;
-    }
-
-    #oledSaver {
-      display: none; position: absolute; inset: 0; background: #000; z-index: 50;
-      align-items: center; justify-content: center; color: #555; font-size: 13px;
-    }
-  </style>
-</head>
-<body>
-
-  <div id="setupView">
-    <h2 style="margin-bottom: 4px;">🎧 DJ Stage Cam</h2>
-    <p style="color: #888; font-size: 13px;">Alege camera sau pupitrul:</p>
-    
-    <input type="text" id="roomInput" placeholder="Nume sesiune" value="dj-stage-live">
-
-    <button class="role-btn btn-dj" onclick="startBooth()">Sunt Pupitrul (Honor / Ecran)</button>
-    <div style="color: #666; font-size: 12px;">— SAU —</div>
-    <button class="role-btn btn-cam" onclick="startCamera()">Sunt Camera (Redmi / Scenă)</button>
-  </div>
-
-  <div id="streamView">
-    <div class="status-bar">
-      <span id="roleStatus">Inițializare...</span>
-      <div id="recIndicator" class="rec-badge">REC <span id="recTimer">00:00</span></div>
-    </div>
-
-    <video id="mainVideo" autoplay playsinline muted></video>
-
-    <div class="overlay-controls">
-      <button class="control-btn" onclick="toggleCameraFacing()" title="Schimbă Camera">🔄</button>
-      <button id="recButton" class="record-btn" onclick="toggleRecord()">REC</button>
-      <button class="control-btn" onclick="toggleOledSaver()" title="Ecran Negru">🌙</button>
-    </div>
-
-    <div id="oledSaver" onclick="toggleOledSaver()">
-      Atinge ecranul pentru a reaprinde imaginea
-    </div>
-  </div>
-
-  <script>
-    let peer, connection, currentStream, mediaRecorder;
-    let recordedChunks = [];
-    let isRecording = false;
-    let recInterval, recSeconds = 0;
-    let currentFacingMode = "environment";
-    let isBoothRole = false;
-
-    // Configurație cu servere STUN Google pentru trecere prin firewall/rețele mobile
-    const peerConfig = {
-      config: {
-        iceServers: [
-          { urls: 'stun:stun.l.google.com:19302' },
-          { urls: 'stun:stun1.l.google.com:19302' }
-        ]
-      }
-    };
-
-    // --- ROL 1: PUPITRU (HONOR) ---
-    function startBooth() {
-      isBoothRole = true;
-      const roomId = document.getElementById("roomInput").value.trim() || "dj-stage-live";
-      peer = new Peer(roomId, peerConfig);
-
-      peer.on("open", () => {
-        document.getElementById("setupView").style.display = "none";
-        document.getElementById("streamView").style.display = "block";
-        document.getElementById("roleStatus").innerText = `Pupitru activ [${roomId}]. Aștept camera...`;
-      });
-
-      peer.on("connection", (conn) => {
-        connection = conn;
-      });
-
-      peer.on("call", (call) => {
-        call.answer(); // Răspunde apelului video primit de la camera
-        call.on("stream", (remoteStream) => {
-          currentStream = remoteStream;
-          const videoEl = document.getElementById("mainVideo");
-          videoEl.srcObject = remoteStream;
-          videoEl.muted = false;
-          videoEl.play().catch(() => {});
-          document.getElementById("roleStatus").innerText = "LIVE (Conectat la scenă)";
-        });
-      });
-
-      peer.on("error", (err) => {
-        alert("Eroare PeerJS (Pupitru): " + err.type + " - " + err.message);
-      });
-    }
-
-    // --- ROL 2: CAMERA (REDMI) ---
-    async function startCamera() {
-      isBoothRole = false;
-      const roomId = document.getElementById("roomInput").value.trim() || "dj-stage-live";
-      peer = new Peer(peerConfig);
-
-      peer.on("open", async () => {
-        document.getElementById("setupView").style.display = "none";
-        document.getElementById("streamView").style.display = "block";
-        document.getElementById("roleStatus").innerText = "Pornire cameră...";
-
-        const streamOk = await initLocalStream();
-        if (!streamOk) return;
-
-        // Creează canal de date pentru comenzi (ex: switch camera din pupitru)
-        connection = peer.connect(roomId);
-        connection.on("data", (data) => {
-          if (data && data.action === "switchCamera") {
-            switchCameraHardware();
-          }
-        });
-
-        // Trimite stream-ul video către pupitru
-        peer.call(roomId, currentStream);
-        document.getElementById("roleStatus").innerText = "LIVE (Transmisie activă)";
-      });
-
-      peer.on("error", (err) => {
-        alert("Eroare conexiune: " + err.type + " (Verifică dacă ai pornit întâi Pupitrul)");
-      });
-    }
-
-    async function initLocalStream() {
-      if (currentStream) {
-        currentStream.getTracks().forEach(t => t.stop());
-      }
-      try {
-        currentStream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: { ideal: currentFacingMode },
-            width: { ideal: 1280 },
-            height: { ideal: 720 }
-          },
-          audio: true
-        });
-        const v = document.getElementById("mainVideo");
-        v.srcObject = currentStream;
-        v.muted = true; // Mute local pentru a preveni microfonia (ecoul)
-        await v.play().catch(() => {});
-        return true;
-      } catch (e) {
-        alert("Nu se poate accesa camera! Asigură-te că rulezi de pe HTTPS și ai acceptat permisiunile: " + e.message);
-        return false;
-      }
-    }
-
-    async function toggleCameraFacing() {
-      if (isBoothRole) {
-        if (connection && connection.open) {
-          connection.send({ action: "switchCamera" });
-        } else {
-          alert("Camera nu este conectată încă!");
+    function getSupportedMimeType() {
+      // Ordinea preferințelor pentru a asigura compatibilitatea pe Android/WhatsApp
+      const candidateTypes = [
+        'video/mp4;codecs=avc1,mp4a.40.2',
+        'video/mp4;codecs=h264',
+        'video/mp4',
+        'video/webm;codecs=h264',
+        'video/webm;codecs=vp8,opus',
+        'video/webm'
+      ];
+      for (let t of candidateTypes) {
+        if (MediaRecorder.isTypeSupported(t)) {
+          return t;
         }
-      } else {
-        await switchCameraHardware();
       }
+      return '';
     }
 
-    async function switchCameraHardware() {
-      currentFacingMode = (currentFacingMode === "environment") ? "user" : "environment";
-      const ok = await initLocalStream();
-      if (ok && peer) {
-        const roomId = document.getElementById("roomInput").value.trim() || "dj-stage-live";
-        peer.call(roomId, currentStream);
-      }
-    }
-
-    // --- ÎNREGISTRARE VIDEO + DESCĂRCARE AUTOMATĂ ---
     function toggleRecord() {
       if (!isRecording) {
         startRecording();
@@ -229,36 +27,27 @@
       }
     }
 
-    function getSupportedMimeType() {
-      const types = [
-        'video/webm;codecs=vp8,opus',
-        'video/webm',
-        'video/mp4;codecs=h264,aac',
-        'video/mp4'
-      ];
-      for (let t of types) {
-        if (MediaRecorder.isTypeSupported(t)) return t;
-      }
-      return '';
-    }
-
     function startRecording() {
       if (!currentStream) {
-        alert("Așteaptă semnalul video înainte de a înregistra.");
+        alert("Așteaptă semnalul video înainte de a înregistra!");
         return;
       }
 
       recordedChunks = [];
-      const mime = getSupportedMimeType();
+      chosenMimeType = getSupportedMimeType();
+
       try {
-        mediaRecorder = mime ? new MediaRecorder(currentStream, { mimeType: mime }) : new MediaRecorder(currentStream);
+        const recorderOptions = chosenMimeType ? { mimeType: chosenMimeType } : {};
+        mediaRecorder = new MediaRecorder(currentStream, recorderOptions);
       } catch (e) {
-        alert("Recorderul video nu este suportat de browserul curent: " + e.message);
+        alert("Eroare la pornirea recorderului: " + e.message);
         return;
       }
 
       mediaRecorder.ondataavailable = (e) => {
-        if (e.data && e.data.size > 0) recordedChunks.push(e.data);
+        if (e.data && e.data.size > 0) {
+          recordedChunks.push(e.data);
+        }
       };
 
       mediaRecorder.onstop = saveVideoFile;
@@ -291,24 +80,13 @@
 
     function saveVideoFile() {
       if (recordedChunks.length === 0) return;
-      const blob = new Blob(recordedChunks, { type: 'video/mp4' });
+
+      // Determinăm extensia reală pe baza a ce a putut browserul să înregistreze
+      const isActualMp4 = chosenMimeType.includes("mp4");
+      const fileExt = isActualMp4 ? "mp4" : "webm";
+      const finalMime = isActualMp4 ? "video/mp4" : "video/webm";
+
+      const blob = new Blob(recordedChunks, { type: finalMime });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
-      const timeStamp = new Date().toISOString().replace(/[:.]/g, '-');
-      a.href = url;
-      a.download = `DJ-REC-${timeStamp}.mp4`;
-      document.body.appendChild(a);
-      a.click();
-      setTimeout(() => {
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-      }, 300);
-    }
-
-    function toggleOledSaver() {
-      const el = document.getElementById("oledSaver");
-      el.style.display = (el.style.display === "flex") ? "none" : "flex";
-    }
-  </script>
-</body>
-</html>
+      const timeStamp = new Date().toISOString().replace(/[:.]/g, '-
