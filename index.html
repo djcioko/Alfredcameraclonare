@@ -1,35 +1,282 @@
-    // --- ÎNREGISTRARE VIDEO COMPATIBILĂ WHATSAPP / TELEFON ---
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>DJ Stage Cam Pro</title>
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+    body { background: #000; color: #fff; font-family: -apple-system, BlinkMacSystemFont, sans-serif; overflow: hidden; height: 100vh; }
+    
+    #setupView {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      height: 100vh; padding: 20px; text-align: center; gap: 14px;
+    }
+    .role-btn {
+      width: 100%; max-width: 320px; padding: 16px; border-radius: 12px; border: none;
+      font-size: 16px; font-weight: bold; cursor: pointer; color: #fff;
+    }
+    .btn-cam { background: #2563eb; }
+    .btn-dj { background: #059669; }
+    input {
+      padding: 14px; width: 100%; max-width: 320px; border-radius: 8px; border: 1px solid #333;
+      background: #111; color: #fff; text-align: center; font-size: 16px;
+    }
+
+    #streamView { display: none; position: relative; width: 100vw; height: 100vh; background: #000; }
+    video { width: 100%; height: 100%; object-fit: contain; }
+    
+    .overlay-controls {
+      position: absolute; bottom: 25px; left: 0; right: 0;
+      display: flex; justify-content: center; align-items: center; gap: 20px; z-index: 10;
+    }
+    .control-btn {
+      width: 56px; height: 56px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.4);
+      background: rgba(0,0,0,0.65); color: #fff; font-size: 22px; cursor: pointer;
+      display: flex; align-items: center; justify-content: center; backdrop-filter: blur(4px);
+    }
+    .record-btn {
+      width: 68px; height: 68px; border: 3px solid #fff; border-radius: 50%;
+      background: #dc2626; color: #fff; font-size: 15px; font-weight: bold;
+    }
+    .recording-active {
+      background: #fff; color: #dc2626; animation: pulse 1s infinite alternate;
+    }
+    @keyframes pulse { from { opacity: 0.6; } to { opacity: 1; } }
+
+    .status-bar {
+      position: absolute; top: 15px; left: 15px; right: 15px;
+      display: flex; justify-content: space-between; align-items: center; z-index: 10;
+      font-size: 13px; font-weight: bold; text-shadow: 1px 1px 3px #000;
+    }
+    .rec-badge {
+      display: none; background: #dc2626; padding: 4px 10px; border-radius: 20px;
+    }
+
+    #oledSaver {
+      display: none; position: absolute; inset: 0; background: #000; z-index: 50;
+      align-items: center; justify-content: center; color: #555; font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="setupView">
+    <h2 style="margin-bottom: 4px;">🎧 DJ Stage Cam</h2>
+    <p style="color: #888; font-size: 13px;">Codul tău secret (pentru a fi privat):</p>
+    
+    <input type="text" id="roomInput" placeholder="Nume sau Cod Secret" value="dj-cioko-live">
+
+    <!-- CAMERA ESTE ACUM PRIMA ȘI PRINCIPALĂ -->
+    <button class="role-btn btn-cam" onclick="startCameraServer()">1. Sunt Camera (Redmi / Pe Scenă)</button>
+    <div style="color: #666; font-size: 12px;">— SAU —</div>
+    <button class="role-btn btn-dj" onclick="startBoothClient()">2. Sunt Pupitrul (Honor / Monitor)</button>
+  </div>
+
+  <div id="streamView">
+    <div class="status-bar">
+      <span id="roleStatus">Inițializare...</span>
+      <div id="recIndicator" class="rec-badge">REC <span id="recTimer">00:00</span></div>
+    </div>
+
+    <video id="mainVideo" autoplay playsinline muted></video>
+
+    <div class="overlay-controls">
+      <button class="control-btn" onclick="toggleCameraFacing()" title="Schimbă Camera">🔄</button>
+      <button id="recButton" class="record-btn" onclick="toggleRecord()">REC</button>
+      <button class="control-btn" onclick="toggleOledSaver()" title="Ecran Negru">🌙</button>
+    </div>
+
+    <div id="oledSaver" onclick="toggleOledSaver()">
+      Atinge ecranul pentru a reaprinde imaginea
+    </div>
+  </div>
+
+  <script>
+    let peer, connection, currentStream, mediaRecorder;
+    let recordedChunks = [];
+    let isRecording = false;
+    let recInterval, recSeconds = 0;
+    let currentFacingMode = "environment";
+    let isBoothRole = false;
+    let autoReconnectInterval = null;
+
+    const peerConfig = {
+      config: {
+        iceServers: [
+          { urls: 'stun:stun.l.google.com:19302' },
+          { urls: 'stun:stun1.l.google.com:19302' }
+        ]
+      }
+    };
+
+    // --- LOGICĂ 1: CAMERA REDMI (GAZDĂ / SERVER) ---
+    // Camera deține ID-ul fix. Oricine cu parola/codul se conectează la ea oricând.
+    async function startCameraServer() {
+      isBoothRole = false;
+      const camId = document.getElementById("roomInput").value.trim() || "dj-cioko-live";
+      
+      document.getElementById("setupView").style.display = "none";
+      document.getElementById("streamView").style.display = "block";
+      document.getElementById("roleStatus").innerText = "Pornire cameră hardware...";
+
+      const streamOk = await initLocalStream();
+      if (!streamOk) return;
+
+      peer = new Peer(camId, peerConfig);
+
+      peer.on("open", () => {
+        document.getElementById("roleStatus").innerText = `Camera Live [${camId}]. Așteaptă pupitrul...`;
+      });
+
+      // Când pupitrul trimite un semnal de conexiune
+      peer.on("connection", (conn) => {
+        connection = conn;
+        conn.on("data", (data) => {
+          if (data && data.action === "requestStream") {
+            // Trimite automat fluxul video când pupitrul îl cere
+            peer.call(conn.peer, currentStream);
+            document.getElementById("roleStatus").innerText = "Transmisie activă către pupitru";
+          }
+          if (data && data.action === "switchCamera") {
+            switchCameraHardware();
+          }
+        });
+      });
+
+      peer.on("error", (err) => {
+        if (err.type === "unavailable-id") {
+          alert("Acest nume de cameră este deja activat pe alt dispozitiv. Pune alt cod secret!");
+          location.reload();
+        } else {
+          console.error(err);
+        }
+      });
+    }
+
+    // --- LOGICĂ 2: PUPITRU HONOR (CLIENT / RECEPTOR) ---
+    function startBoothClient() {
+      isBoothRole = true;
+      const camId = document.getElementById("roomInput").value.trim() || "dj-cioko-live";
+
+      document.getElementById("setupView").style.display = "none";
+      document.getElementById("streamView").style.display = "block";
+      document.getElementById("roleStatus").innerText = `Conectare la camera [${camId}]...`;
+
+      initBoothPeer(camId);
+    }
+
+    function initBoothPeer(camId) {
+      if (peer) peer.destroy();
+      peer = new Peer(peerConfig);
+
+      peer.on("open", () => {
+        connectToCamera(camId);
+      });
+
+      peer.on("call", (call) => {
+        call.answer();
+        call.on("stream", (remoteStream) => {
+          currentStream = remoteStream;
+          const videoEl = document.getElementById("mainVideo");
+          videoEl.srcObject = remoteStream;
+          videoEl.muted = false;
+          videoEl.play().catch(() => {});
+          document.getElementById("roleStatus").innerText = "LIVE (Conectat la scenă)";
+        });
+      });
+
+      peer.on("error", (err) => {
+        console.warn("Eroare căutare cameră:", err);
+        document.getElementById("roleStatus").innerText = "Camera nu este încă deschisă. Reîncerc...";
+      });
+    }
+
+    function connectToCamera(camId) {
+      connection = peer.connect(camId);
+
+      connection.on("open", () => {
+        // Imediat ce s-a conectat la cameră, îi cere fluxul video
+        connection.send({ action: "requestStream" });
+      });
+
+      connection.on("close", () => {
+        document.getElementById("roleStatus").innerText = "Semnal pierdut. Reconectare automată...";
+        setTimeout(() => connectToCamera(camId), 2000);
+      });
+    }
+
+    // --- ACCES HARDWARE & COMUTARE CAMERĂ ---
+    async function initLocalStream() {
+      if (currentStream) {
+        currentStream.getTracks().forEach(t => t.stop());
+      }
+      try {
+        currentStream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: { ideal: currentFacingMode },
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
+          },
+          audio: true
+        });
+        const v = document.getElementById("mainVideo");
+        v.srcObject = currentStream;
+        v.muted = true;
+        await v.play().catch(() => {});
+        return true;
+      } catch (e) {
+        alert("Eroare cameră: " + e.message);
+        return false;
+      }
+    }
+
+    async function toggleCameraFacing() {
+      if (isBoothRole) {
+        if (connection && connection.open) {
+          connection.send({ action: "switchCamera" });
+        } else {
+          alert("Camera nu este conectată!");
+        }
+      } else {
+        await switchCameraHardware();
+      }
+    }
+
+    async function switchCameraHardware() {
+      currentFacingMode = (currentFacingMode === "environment") ? "user" : "environment";
+      const ok = await initLocalStream();
+      if (ok && connection && connection.open) {
+        peer.call(connection.peer, currentStream);
+      }
+    }
+
+    // --- ÎNREGISTRARE COMPATIBILĂ ---
     let chosenMimeType = "";
 
     function getSupportedMimeType() {
-      // Ordinea preferințelor pentru a asigura compatibilitatea pe Android/WhatsApp
-      const candidateTypes = [
+      const candidates = [
         'video/mp4;codecs=avc1,mp4a.40.2',
-        'video/mp4;codecs=h264',
         'video/mp4',
         'video/webm;codecs=h264',
         'video/webm;codecs=vp8,opus',
         'video/webm'
       ];
-      for (let t of candidateTypes) {
-        if (MediaRecorder.isTypeSupported(t)) {
-          return t;
-        }
+      for (let t of candidates) {
+        if (MediaRecorder.isTypeSupported(t)) return t;
       }
       return '';
     }
 
     function toggleRecord() {
-      if (!isRecording) {
-        startRecording();
-      } else {
-        stopRecording();
-      }
+      if (!isRecording) startRecording();
+      else stopRecording();
     }
 
     function startRecording() {
       if (!currentStream) {
-        alert("Așteaptă semnalul video înainte de a înregistra!");
+        alert("Așteaptă semnalul video!");
         return;
       }
 
@@ -37,17 +284,15 @@
       chosenMimeType = getSupportedMimeType();
 
       try {
-        const recorderOptions = chosenMimeType ? { mimeType: chosenMimeType } : {};
-        mediaRecorder = new MediaRecorder(currentStream, recorderOptions);
+        const opt = chosenMimeType ? { mimeType: chosenMimeType } : {};
+        mediaRecorder = new MediaRecorder(currentStream, opt);
       } catch (e) {
-        alert("Eroare la pornirea recorderului: " + e.message);
+        alert("Eroare la pornirea înregistrării: " + e.message);
         return;
       }
 
       mediaRecorder.ondataavailable = (e) => {
-        if (e.data && e.data.size > 0) {
-          recordedChunks.push(e.data);
-        }
+        if (e.data && e.data.size > 0) recordedChunks.push(e.data);
       };
 
       mediaRecorder.onstop = saveVideoFile;
@@ -81,7 +326,6 @@
     function saveVideoFile() {
       if (recordedChunks.length === 0) return;
 
-      // Determinăm extensia reală pe baza a ce a putut browserul să înregistreze
       const isActualMp4 = chosenMimeType.includes("mp4");
       const fileExt = isActualMp4 ? "mp4" : "webm";
       const finalMime = isActualMp4 ? "video/mp4" : "video/webm";
@@ -89,4 +333,23 @@
       const blob = new Blob(recordedChunks, { type: finalMime });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
-      const timeStamp = new Date().toISOString().replace(/[:.]/g, '-
+      const timeStamp = new Date().toISOString().replace(/[:.]/g, '-');
+      
+      a.href = url;
+      a.download = `DJ-REC-${timeStamp}.${fileExt}`;
+      document.body.appendChild(a);
+      a.click();
+
+      setTimeout(() => {
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }, 400);
+    }
+
+    function toggleOledSaver() {
+      const el = document.getElementById("oledSaver");
+      el.style.display = (el.style.display === "flex") ? "none" : "flex";
+    }
+  </script>
+</body>
+</html>
