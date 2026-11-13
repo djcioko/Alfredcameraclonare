@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>DJ Stage Cam Lite</title>
+  <title>DJ Stage Cam Pro 750p</title>
   <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
@@ -11,17 +11,29 @@
     
     #setupView {
       display: flex; flex-direction: column; align-items: center; justify-content: center;
-      height: 100vh; padding: 20px; text-align: center; gap: 14px;
+      height: 100vh; padding: 20px; text-align: center; gap: 12px;
     }
     .role-btn {
-      width: 100%; max-width: 320px; padding: 16px; border-radius: 12px; border: none;
+      width: 100%; max-width: 340px; padding: 15px; border-radius: 12px; border: none;
       font-size: 16px; font-weight: bold; cursor: pointer; color: #fff;
     }
     .btn-cam { background: #2563eb; }
     .btn-dj { background: #059669; }
-    input[type="text"] {
-      padding: 14px; width: 100%; max-width: 320px; border-radius: 8px; border: 1px solid #333;
-      background: #111; color: #fff; text-align: center; font-size: 16px;
+    
+    input[type="text"], select {
+      padding: 12px; width: 100%; max-width: 340px; border-radius: 8px; border: 1px solid #333;
+      background: #111; color: #fff; font-size: 14px;
+    }
+    input[type="text"] { text-align: center; font-size: 16px; font-weight: bold; }
+
+    .mic-box {
+      width: 100%; max-width: 340px; background: #141414; padding: 10px;
+      border-radius: 10px; border: 1px solid #2a2a2a; text-align: left;
+    }
+    .mic-row { display: flex; gap: 6px; margin-top: 6px; }
+    .refresh-btn {
+      padding: 0 12px; border-radius: 8px; border: 1px solid #444; background: #222;
+      color: #fff; cursor: pointer; font-size: 16px;
     }
 
     #streamView { display: none; position: relative; width: 100vw; height: 100vh; background: #000; }
@@ -29,11 +41,38 @@
 
     .status-bar {
       position: absolute; top: 12px; left: 12px; right: 12px;
-      display: flex; justify-content: space-between; align-items: center; z-index: 20;
+      display: flex; flex-direction: column; gap: 8px; z-index: 20;
       font-size: 13px; font-weight: bold; text-shadow: 1px 1px 3px #000;
     }
+    .top-row { display: flex; justify-content: space-between; align-items: center; }
     .rec-badge {
-      display: none; background: #dc2626; padding: 4px 10px; border-radius: 20px;
+      display: none; background: #dc2626; padding: 4px 12px; border-radius: 20px;
+      box-shadow: 0 0 10px rgba(220, 38, 38, 0.8);
+    }
+
+    /* VU-METRU AUDIO */
+    .vu-container {
+      display: flex; align-items: center; gap: 8px; background: rgba(0, 0, 0, 0.65);
+      padding: 6px 10px; border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.15);
+      backdrop-filter: blur(4px);
+    }
+    .vu-label { font-size: 11px; color: #ccc; white-space: nowrap; }
+    .vu-bar-bg {
+      flex: 1; height: 10px; background: #222; border-radius: 5px; overflow: hidden;
+    }
+    .vu-bar-fill {
+      height: 100%; width: 0%;
+      background: linear-gradient(90deg, #22c55e 0%, #eab308 75%, #ef4444 100%);
+      transition: width 0.06s linear;
+    }
+
+    /* SELECTOR MIC RAPID PE ECRANUL DE CAMERA */
+    #liveMicSelectorContainer {
+      display: none; position: absolute; top: 82px; left: 12px; right: 12px; z-index: 20;
+    }
+    #liveMicSelect {
+      width: 100%; max-width: none; background: rgba(0,0,0,0.75); border: 1px solid #444;
+      padding: 8px; font-size: 12px; border-radius: 8px;
     }
 
     .overlay-controls {
@@ -46,13 +85,13 @@
       display: flex; align-items: center; justify-content: center; backdrop-filter: blur(4px);
     }
     .record-btn {
-      width: 68px; height: 68px; border: 3px solid #fff; border-radius: 50%;
+      width: 72px; height: 72px; border: 3px solid #fff; border-radius: 50%;
       background: #dc2626; color: #fff; font-size: 15px; font-weight: bold;
     }
     .recording-active {
       background: #fff; color: #dc2626; animation: pulse 1s infinite alternate;
     }
-    @keyframes pulse { from { opacity: 0.6; } to { opacity: 1; } }
+    @keyframes pulse { from { opacity: 0.7; } to { opacity: 1; } }
 
     #oledSaver {
       display: none; position: absolute; inset: 0; background: #000; z-index: 60;
@@ -63,9 +102,20 @@
 <body>
 
   <div id="setupView">
-    <h2 style="margin-bottom: 4px;">🎧 DJ Stage Cam</h2>
-    <p style="color: #888; font-size: 13px;">Cod cameră:</p>
-    <input type="text" id="roomInput" value="dj-cioko-live">
+    <h2 style="margin-bottom: 2px;">🎧 DJ Stage Cam Pro</h2>
+    <p style="color: #888; font-size: 12px;">Rezoluție 750p • Audio Extern USB • Switch Fără Întrerupere</p>
+    
+    <input type="text" id="roomInput" value="dj-cioko-live" placeholder="Cod cameră">
+
+    <div class="mic-box">
+      <label style="font-size: 12px; color: #aaa;">🎙️ Sursă Microfon (pentru Redmi / Cameră):</label>
+      <div class="mic-row">
+        <select id="setupMicSelect">
+          <option value="">Microfon Implicit / Auto</option>
+        </select>
+        <button class="refresh-btn" onclick="loadAudioDevices()" title="Reîncarcă dispozitivele USB">🔄</button>
+      </div>
+    </div>
 
     <button class="role-btn btn-cam" onclick="startCameraServer()">1. Sunt Camera (Redmi / Scenă)</button>
     <div style="color: #666; font-size: 12px;">— SAU —</div>
@@ -74,17 +124,33 @@
 
   <div id="streamView" onclick="handleTapToPlay()">
     <div class="status-bar">
-      <span id="roleStatus">Conectare...</span>
-      <div id="recIndicator" class="rec-badge">REC <span id="recTimer">00:00</span></div>
+      <div class="top-row">
+        <span id="roleStatus">Conectare...</span>
+        <div id="recIndicator" class="rec-badge">REC <span id="recTimer">00:00:00</span></div>
+      </div>
+
+      <!-- VU-METRU LIVE PE AMBELE TELEFOANE -->
+      <div class="vu-container">
+        <span class="vu-label" id="vuLabel">MIC IN:</span>
+        <div class="vu-bar-bg">
+          <div class="vu-bar-fill" id="vuBar"></div>
+        </div>
+      </div>
     </div>
 
-    <!-- Video curat direct -->
+    <!-- Selector rapid de microfon pe telefonul Cameră -->
+    <div id="liveMicSelectorContainer" onclick="event.stopPropagation()">
+      <select id="liveMicSelect" onchange="changeLiveMicrophone(this.value)"></select>
+    </div>
+
     <video id="mainVideo" autoplay playsinline muted></video>
+    <!-- Video ascuns folosit pentru randarea continuă pe Canvas la 750p -->
+    <video id="rawCameraVideo" autoplay playsinline muted style="display:none;"></video>
 
     <div class="overlay-controls">
-      <button class="control-btn" onclick="toggleCameraFacing(event)" title="Schimbă Camera">🔄</button>
+      <button class="control-btn" onclick="toggleCameraFacing(event)" title="Schimbă Camera Față/Spate">🔄</button>
       <button id="recButton" class="record-btn" onclick="toggleRecord(event)">REC</button>
-      <button id="audioToggleBtn" class="control-btn" onclick="toggleMonitorAudio(event)" title="Sunet în telefon">🔇</button>
+      <button id="audioToggleBtn" class="control-btn" onclick="toggleMonitorAudio(event)" title="Ascultă sunetul în telefon">🔇</button>
       <button class="control-btn" onclick="toggleOledSaver(event)" title="Ecran Negru">🌙</button>
     </div>
 
@@ -95,12 +161,19 @@
 
   <script>
     let peer, connection, currentCall;
-    let localStream, remoteStream;
+    let rawHardwareStream = null;
+    let persistentStream = null; // Flux continuu 750p (nu se rupe la schimbarea camerei)
+    let remoteStream = null;
     let mediaRecorder, recordedChunks = [];
     let isRecording = false;
     let recInterval, recSeconds = 0;
     let currentFacingMode = "environment";
     let isBoothRole = false;
+    let selectedMicId = "";
+
+    // Variabile pentru procesare continua Video (750p) & Audio + VU-Metru
+    let canvasEl, canvasCtx, canvasAnimId;
+    let audioCtx, audioDestNode, currentAudioSourceNode, analyserNode, vuAnimId;
 
     const peerConfig = {
       config: {
@@ -111,35 +184,167 @@
       }
     };
 
+    // Restaurare setari salvate anterior
+    window.addEventListener('DOMContentLoaded', async () => {
+      const savedRoom = localStorage.getItem('dj_cam_room');
+      const savedMic = localStorage.getItem('dj_cam_mic');
+      if (savedRoom) document.getElementById('roomInput').value = savedRoom;
+      await loadAudioDevices();
+      if (savedMic) {
+        selectedMicId = savedMic;
+        document.getElementById('setupMicSelect').value = savedMic;
+      }
+    });
+
+    // Detectare microfoane conectate (inclusiv Hollyland USB-C)
+    async function loadAudioDevices() {
+      try {
+        // Cerem permisiune temporara pentru a vedea numele reale ale microfoanelor USB
+        const tempStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        tempStream.getTracks().forEach(t => t.stop());
+
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const audioInputs = devices.filter(d => d.kind === 'audioinput');
+        
+        const setupSelect = document.getElementById('setupMicSelect');
+        const liveSelect = document.getElementById('liveMicSelect');
+        setupSelect.innerHTML = '';
+        liveSelect.innerHTML = '';
+
+        audioInputs.forEach((device, idx) => {
+          const label = device.label || `Microfon ${idx + 1}`;
+          const isExternal = /usb|headset|external|hollyland|wired|mic/i.test(label);
+          const displayLabel = isExternal ? `✅ [EXTERN] ${label}` : label;
+
+          const opt1 = new Option(displayLabel, device.deviceId);
+          const opt2 = new Option(`🎙️ ${displayLabel}`, device.deviceId);
+          setupSelect.add(opt1);
+          liveSelect.add(opt2);
+
+          // Selecteaza automat microfonul extern daca nu e altul ales
+          if (isExternal && !selectedMicId) {
+            selectedMicId = device.deviceId;
+          }
+        });
+
+        if (selectedMicId) {
+          setupSelect.value = selectedMicId;
+          liveSelect.value = selectedMicId;
+        }
+      } catch (e) {
+        console.warn("Nu s-au putut lista microfoanele încă:", e);
+      }
+    }
+
     function handleTapToPlay() {
       const v = document.getElementById("mainVideo");
       if (v.paused) v.play().catch(() => {});
+      if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+    }
+
+    // --- FLUX CONTINUU 750p + MIXER AUDIO PERMANENT ---
+    function initPersistentPipeline() {
+      if (!canvasEl) {
+        canvasEl = document.createElement('canvas');
+        canvasEl.width = 1280;
+        canvasEl.height = 750; // Rezolutie 750p ceruta
+        canvasCtx = canvasEl.getContext('2d', { alpha: false });
+      }
+
+      if (!audioCtx) {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        audioCtx = new AudioContextClass();
+        audioDestNode = audioCtx.createMediaStreamDestination();
+        analyserNode = audioCtx.createAnalyser();
+        analyserNode.fftSize = 256;
+      }
+
+      // Porneste bucla de desenare continua pe canvas la 30fps
+      if (!canvasAnimId) {
+        const rawVid = document.getElementById("rawCameraVideo");
+        const drawLoop = () => {
+          if (rawVid.readyState >= 2) {
+            // Adapteaza dimensiunea canvasului (Portrait sau Landscape) pastrand 750p
+            const isPortrait = rawVid.videoHeight > rawVid.videoWidth;
+            const targetW = isPortrait ? 750 : 1280;
+            const targetH = isPortrait ? 1280 : 750;
+            if (canvasEl.width !== targetW || canvasEl.height !== targetH) {
+              canvasEl.width = targetW;
+              canvasEl.height = targetH;
+            }
+            canvasCtx.drawImage(rawVid, 0, 0, canvasEl.width, canvasEl.height);
+          }
+          canvasAnimId = requestAnimationFrame(drawLoop);
+        };
+        drawLoop();
+      }
+
+      const videoTrack = canvasEl.captureStream(30).getVideoTracks()[0];
+      const audioTrack = audioDestNode.stream.getAudioTracks()[0];
+      persistentStream = new MediaStream([videoTrack, audioTrack]);
+
+      startVuMeterLoop();
+    }
+
+    function startVuMeterLoop() {
+      if (vuAnimId) cancelAnimationFrame(vuAnimId);
+      const dataArray = new Uint8Array(analyserNode.frequencyBinCount);
+      const vuBar = document.getElementById("vuBar");
+
+      const updateVu = () => {
+        analyserNode.getByteFrequencyData(dataArray);
+        let sum = 0;
+        for (let i = 0; i < dataArray.length; i++) {
+          sum += dataArray[i];
+        }
+        const average = sum / dataArray.length;
+        // Amplificare vizuala pentru a vedea clar semnalul din lavaliera
+        const levelPercent = Math.min(100, Math.round((average / 110) * 100));
+        vuBar.style.width = levelPercent + "%";
+        vuAnimId = requestAnimationFrame(updateVu);
+      };
+      updateVu();
     }
 
     // --- 1. ROL CAMERA (REDMI) ---
     async function startCameraServer() {
       isBoothRole = false;
       const camId = document.getElementById("roomInput").value.trim() || "dj-cioko-live";
+      selectedMicId = document.getElementById("setupMicSelect").value;
+
+      localStorage.setItem('dj_cam_room', camId);
+      localStorage.setItem('dj_cam_mic', selectedMicId);
 
       document.getElementById("setupView").style.display = "none";
       document.getElementById("streamView").style.display = "block";
-      document.getElementById("roleStatus").innerText = "Pornire cameră...";
+      document.getElementById("liveMicSelectorContainer").style.display = "block";
+      document.getElementById("vuLabel").innerText = "MIC USB/IN:";
+      document.getElementById("roleStatus").innerText = "Pornire cameră 750p...";
 
-      const ok = await getCameraStream();
+      initPersistentPipeline();
+
+      const ok = await updateHardwareMedia();
       if (!ok) return;
+
+      // Afiseaza fluxul continuu 750p pe ecranul Redmi
+      const mainVid = document.getElementById("mainVideo");
+      mainVid.srcObject = persistentStream;
+      mainVid.muted = true;
+      await mainVid.play().catch(() => {});
 
       peer = new Peer(camId, peerConfig);
 
       peer.on("open", () => {
-        document.getElementById("roleStatus").innerText = `Camera gata [${camId}]`;
+        document.getElementById("roleStatus").innerText = `Camera 750p Gata [${camId}]`;
       });
 
       peer.on("connection", (conn) => {
         connection = conn;
         conn.on("data", (data) => {
           if (data && data.action === "requestStream") {
-            currentCall = peer.call(conn.peer, localStream);
-            document.getElementById("roleStatus").innerText = "Transmisie activă";
+            // Trimite fluxul persistent (nu se intrerupe la switch camera!)
+            currentCall = peer.call(conn.peer, persistentStream);
+            document.getElementById("roleStatus").innerText = "LIVE către Honor (750p)";
           }
           if (data && data.action === "switchCamera") {
             switchCameraHardware();
@@ -154,41 +359,80 @@
       });
     }
 
-    async function getCameraStream() {
-      if (localStream) {
-        localStream.getTracks().forEach(t => t.stop());
+    async function updateHardwareMedia() {
+      if (rawHardwareStream) {
+        rawHardwareStream.getTracks().forEach(t => t.stop());
       }
+
+      // Configurare audio curata pentru lavaliera USB Hollyland (fara filtre care taie sunetul)
+      const audioConstraints = {
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: false
+      };
+      if (selectedMicId) {
+        audioConstraints.deviceId = { exact: selectedMicId };
+      }
+
       try {
-        localStream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: currentFacingMode }, width: { ideal: 1280 }, height: { ideal: 720 } },
-          audio: true
+        rawHardwareStream = await navigator.mediaDevices.getUserMedia({
+          video: { 
+            facingMode: { ideal: currentFacingMode }, 
+            width: { ideal: 1280 }, 
+            height: { ideal: 750 } 
+          },
+          audio: audioConstraints
         });
-        const v = document.getElementById("mainVideo");
-        v.srcObject = localStream;
-        v.muted = true;
-        await v.play().catch(() => {});
+
+        // Trimite imaginea hardware catre video-ul ascuns care alimenteaza Canvasul
+        const rawVid = document.getElementById("rawCameraVideo");
+        rawVid.srcObject = rawHardwareStream;
+        await rawVid.play().catch(() => {});
+
+        // Conecteaza noul microfon la mixerul audio persistent + VU-metru
+        if (audioCtx.state === 'suspended') await audioCtx.resume();
+        if (currentAudioSourceNode) {
+          currentAudioSourceNode.disconnect();
+        }
+        currentAudioSourceNode = audioCtx.createMediaStreamSource(rawHardwareStream);
+        currentAudioSourceNode.connect(audioDestNode);
+        currentAudioSourceNode.connect(analyserNode);
+
+        // Actualizeaza lista de microfoane
+        await loadAudioDevices();
         return true;
       } catch (e) {
-        alert("Eroare acces cameră: " + e.message);
+        // Fallback daca deviceId-ul salvat nu mai este conectat
+        if (selectedMicId) {
+          selectedMicId = "";
+          return updateHardwareMedia();
+        }
+        alert("Eroare acces cameră/mic: " + e.message);
         return false;
       }
     }
 
+    async function changeLiveMicrophone(newDeviceId) {
+      selectedMicId = newDeviceId;
+      localStorage.setItem('dj_cam_mic', selectedMicId);
+      await updateHardwareMedia();
+    }
+
     async function switchCameraHardware() {
       currentFacingMode = (currentFacingMode === "environment") ? "user" : "environment";
-      const ok = await getCameraStream();
-      if (ok && connection && connection.open) {
-        currentCall = peer.call(connection.peer, localStream);
-      }
+      // Doar actualizam sursa hardware; persistentStream ramane activ si inregistrarea NU se opreste!
+      await updateHardwareMedia();
     }
 
     // --- 2. ROL PUPITRU (HONOR) ---
     function startBoothClient() {
       isBoothRole = true;
       const camId = document.getElementById("roomInput").value.trim() || "dj-cioko-live";
+      localStorage.setItem('dj_cam_room', camId);
 
       document.getElementById("setupView").style.display = "none";
       document.getElementById("streamView").style.display = "block";
+      document.getElementById("vuLabel").innerText = "SEMNAL SCENĂ:";
       document.getElementById("roleStatus").innerText = `Conectare la ${camId}...`;
 
       peer = new Peer(peerConfig);
@@ -204,11 +448,31 @@
           remoteStream = stream;
           const v = document.getElementById("mainVideo");
           v.srcObject = stream;
-          v.muted = true; // Pornește mut pentru a preveni microfonia când telefoanele sunt aproape
+          v.muted = true; // Ramane mut in difuzor sa nu faca microfonie, dar inregistreaza sunetul!
           v.play().catch(() => {});
-          document.getElementById("roleStatus").innerText = "LIVE (Scenă)";
+          document.getElementById("roleStatus").innerText = "LIVE 750p (Conectat)";
+
+          // Conecteaza fluxul primit la VU-metrul de pe Honor
+          setupRemoteVuMeter(stream);
         });
       });
+    }
+
+    function setupRemoteVuMeter(stream) {
+      try {
+        if (!audioCtx) {
+          const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+          audioCtx = new AudioContextClass();
+          analyserNode = audioCtx.createAnalyser();
+          analyserNode.fftSize = 256;
+        }
+        if (currentAudioSourceNode) currentAudioSourceNode.disconnect();
+        currentAudioSourceNode = audioCtx.createMediaStreamSource(stream);
+        currentAudioSourceNode.connect(analyserNode);
+        startVuMeterLoop();
+      } catch (e) {
+        console.warn("VU-metru remote:", e);
+      }
     }
 
     function connectToHost(camId) {
@@ -235,16 +499,16 @@
       }
     }
 
-    // Control sunet în difuzorul telefonului Honor (Fără efect asupra înregistrării)
     function toggleMonitorAudio(e) {
       if (e) e.stopPropagation();
       const v = document.getElementById("mainVideo");
       const btn = document.getElementById("audioToggleBtn");
       v.muted = !v.muted;
       btn.innerText = v.muted ? "🔇" : "🔊";
+      if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
     }
 
-    // --- RECORDING DIRECT DIN SEMNAL ---
+    // --- RECORDING 750p TIMP LUNG + DESCARCARE AUTOMATA ---
     function toggleRecord(e) {
       if (e) e.stopPropagation();
       if (!isRecording) startRecording();
@@ -252,28 +516,41 @@
     }
 
     function startRecording() {
-      const targetStream = isBoothRole ? remoteStream : localStream;
+      const targetStream = isBoothRole ? remoteStream : persistentStream;
       if (!targetStream) {
         alert("Așteaptă semnalul video înainte de a înregistra!");
         return;
       }
 
       recordedChunks = [];
-      const mimeTypes = ['video/mp4', 'video/webm;codecs=vp8,opus', 'video/webm'];
+      const mimeTypes = [
+        'video/mp4;codecs=avc1,mp4a.40.2',
+        'video/mp4',
+        'video/webm;codecs=vp8,opus',
+        'video/webm'
+      ];
       let selectedMime = mimeTypes.find(t => MediaRecorder.isTypeSupported(t)) || '';
 
+      // 3.5 Mbps bitrate asigura calitate clara 750p si fisiere stabile la filmari lungi
+      const options = {
+        videoBitsPerSecond: 3500000,
+        audioBitsPerSecond: 128000
+      };
+      if (selectedMime) options.mimeType = selectedMime;
+
       try {
-        mediaRecorder = selectedMime ? new MediaRecorder(targetStream, { mimeType: selectedMime }) : new MediaRecorder(targetStream);
+        mediaRecorder = new MediaRecorder(targetStream, options);
       } catch (e) {
         mediaRecorder = new MediaRecorder(targetStream);
       }
 
+      // Colecteaza bucati la fiecare 2 secunde pentru stabilitate la timp lung de record
       mediaRecorder.ondataavailable = (e) => {
         if (e.data && e.data.size > 0) recordedChunks.push(e.data);
       };
 
       mediaRecorder.onstop = saveVideoFile;
-      mediaRecorder.start(1000);
+      mediaRecorder.start(2000);
 
       isRecording = true;
       document.getElementById("recButton").innerText = "STOP";
@@ -281,11 +558,13 @@
       document.getElementById("recIndicator").style.display = "block";
 
       recSeconds = 0;
+      document.getElementById("recTimer").innerText = "00:00:00";
       recInterval = setInterval(() => {
         recSeconds++;
-        const m = String(Math.floor(recSeconds / 60)).padStart(2, '0');
+        const h = String(Math.floor(recSeconds / 3600)).padStart(2, '0');
+        const m = String(Math.floor((recSeconds % 3600) / 60)).padStart(2, '0');
         const s = String(recSeconds % 60).padStart(2, '0');
-        document.getElementById("recTimer").innerText = `${m}:${s}`;
+        document.getElementById("recTimer").innerText = `${h}:${m}:${s}`;
       }, 1000);
     }
 
@@ -306,17 +585,21 @@
       const ext = isMp4 ? "mp4" : "webm";
       const blob = new Blob(recordedChunks, { type: isMp4 ? 'video/mp4' : 'video/webm' });
       
+      // Eliberam memoria imediat
+      recordedChunks = [];
+
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
-      const timeStamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const now = new Date();
+      const dateStr = now.toISOString().slice(0, 19).replace(/[:T]/g, '-');
       a.href = url;
-      a.download = `DJ-REC-${timeStamp}.${ext}`;
+      a.download = `DJ-750p-${dateStr}.${ext}`;
       document.body.appendChild(a);
       a.click();
       setTimeout(() => {
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
-      }, 300);
+      }, 1000);
     }
 
     function toggleOledSaver(e) {
